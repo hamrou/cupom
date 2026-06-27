@@ -1,0 +1,27 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    restart: always
+    env_file: .env
+    volumes:
+      - cupom-data:/data
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: always
+    depends_on:
+      - server
+    networks:
+      - default
+      - credpet_default
+
+volumes:
+  cupom-data:
+
+networks:
+  credpet_default:
+    external: true
