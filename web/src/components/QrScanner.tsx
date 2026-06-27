@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Html5Qrcode } from "html5-qrcode";
+import { clientLog } from "../lib/clientLog";
 
 interface Props {
   onScan: (accessKey: string) => void;
@@ -25,42 +26,57 @@ function extractAccessKey(text: string): string | null {
 
 export function QrScanner({ onScan, onClose }: Props) {
   const containerId = "qr-scanner-container";
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const scannedRef = useRef(false);
+  // Keep latest callbacks in refs so the effect never needs to re-run
+  const onScanRef = useRef(onScan);
+  const onCloseRef = useRef(onClose);
+  onScanRef.current = onScan;
+  onCloseRef.current = onClose;
 
   useEffect(() => {
-    const scanner = new Html5Qrcode(containerId);
-    scannerRef.current = scanner;
+    let scanner: Html5Qrcode | null = null;
+    let stopped = false;
 
-    scanner
-      .start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-          if (scannedRef.current) return;
-          const key = extractAccessKey(decodedText);
-          if (key) {
-            scannedRef.current = true;
-            scanner.stop().then(() => onScan(key)).catch(() => onScan(key));
-          }
-        },
-        undefined,
-      )
-      .catch(() => {
-        // camera permission denied or not available
-      });
+    async function safeStop() {
+      if (stopped || !scanner) return;
+      stopped = true;
+      try {
+        await scanner.stop();
+      } catch {}
+    }
 
-    return () => {
-      scanner.stop().catch(() => {});
-    };
-  }, [onScan]);
+    async function start() {
+      try {
+        scanner = new Html5Qrcode(containerId);
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          async (decodedText) => {
+            const key = extractAccessKey(decodedText);
+            if (!key) {
+              clientLog("warn", "QR scanned but no 44-digit key found", { decodedText });
+              return;
+            }
+            clientLog("info", "QR key extracted", { key });
+            await safeStop();
+            onScanRef.current(key);
+          },
+          undefined,
+        );
+      } catch (err) {
+        clientLog("error", "QrScanner start failed", { err: String(err) });
+      }
+    }
+
+    start();
+    return () => { safeStop(); };
+  }, []); // empty deps — callbacks accessed via refs
 
   return (
     <div className="qr-overlay">
       <div className="qr-modal">
         <div className="qr-header">
           <span>Point camera at NFC-e QR code</span>
-          <button type="button" className="qr-close" onClick={onClose}>
+          <button type="button" className="qr-close" onClick={() => onCloseRef.current()}>
             ✕
           </button>
         </div>
