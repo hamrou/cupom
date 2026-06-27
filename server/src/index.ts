@@ -33,8 +33,8 @@ app.post("/api/log", (req, res) => {
   res.sendStatus(204);
 });
 
-// Serve log file
-app.get("/log.txt", (_req, res) => {
+// Serve log file (must be under /api/ so the reverse proxy forwards it)
+app.get("/api/log.txt", (_req, res) => {
   try {
     const content = fs.existsSync(LOG_PATH) ? fs.readFileSync(LOG_PATH, "utf-8") : "(empty)";
     res.type("text/plain").send(content);
